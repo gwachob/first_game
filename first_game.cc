@@ -23,8 +23,9 @@ struct Item {
   char label;
   int y;
   int x;
+  int age;
 
-  Item(char label, int y, int x) : label(label), y(y), x(x){};
+  Item(char label, int y, int x) : label(label), y(y), x(x), age(0){};
 };
 
 int loop = 0;
@@ -69,10 +70,22 @@ void GameLoop(WINDOW *window) {
 
   // Draw the output
   wclear(window);
-  box(window, '|', '-');
+  wborder(window, 0, 0, 0, 0, 0, 0, 0, 0);
   mvprintw(10, 10, "The iteration is %d", loop++);
-  for (const auto &item : items) {
-    mvwaddch(window, item.y, item.x, item.label);
+
+  // Kind of a hack - iterate through the vector, possibly removing 
+  // items if they are too old. In theory, we'd have a way for these
+  // items to remove themselves, or a data structure that better 
+  // supported this kind of removal (hashtable?)
+  auto i = std::begin(items);
+  while (i != std::end(items)) {
+    if (i->age > 100) {
+      i = items.erase(i);
+    } else {
+      mvwaddch(window, i->y, i->x, i->label | COLOR_PAIR(i->age / 10 + 50));
+      i->age++;
+      ++i;
+    }
   }
   mvwaddch(window, curY, curX, 'X' | A_BOLD);
   wrefresh(window); /* Print it on to the real screen */
@@ -87,8 +100,13 @@ int main() {
   nodelay(stdscr, TRUE);
   keypad(stdscr, TRUE);
   wresize(window, 50, 50);
+  start_color();
+  for (int i = 50; i < 60; i++) {
+    init_color(i, (200 - (i - 50) * 20), (1000 - (i - 50) * 100),
+               (100 - (i - 50) * 10));
+    init_pair(i, i, COLOR_BLACK);
+  }
   timer_start(std::bind(GameLoop, window), 50).join();
-
   endwin(); /* End curses mode		  */
   return 0;
 }
