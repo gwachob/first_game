@@ -69,7 +69,7 @@ void GameLoop(WINDOW *window) {
   }
 
   // Draw the output
-  wclear(window);
+  werase(window);
   wborder(window, 0, 0, 0, 0, 0, 0, 0, 0);
   mvprintw(10, 10, "The iteration is %d", loop++);
 
