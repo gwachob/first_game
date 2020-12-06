@@ -6,6 +6,7 @@
 #include <ncurses.h>
 #include <thread>
 #include <vector>
+#define PI 3.14159265
 
 bool exitRequested = false;
 
@@ -19,12 +20,43 @@ std::thread timer_start(std::function<void(void)> func, unsigned int interval) {
     }
   });
 }
+struct Point2D {
+  int x = 0;
+  int y = 0;
+};
+
 struct Item {
   char label;
-  int y;
-  int x;
+  Point2D center;
 
-  Item(char label, int y, int x) : label(label), y(y), x(x){};
+  Item(char label, Point2D center) : label(label), center(center){};
+};
+
+Point2D rotatePoint(Point2D start, Point2D center, float degrees) {
+  float s = sin(degrees * PI / 180);
+  float c = cos(degrees * PI / 180);
+
+  Point2D result;
+  result.x = start.x - center.x;
+  result.y = start.y - center.y;
+
+  result.x = (int)(result.x * c - result.y * s);
+  result.y = (int)(result.x * s + result.y * c);
+
+  result.x += center.x;
+  result.y += center.y;
+
+  return result;
+}
+struct RotatingSquare {
+  char label;
+
+  Point2D center;
+  int size;
+  float rotation;
+
+  RotatingSquare(char label, Point2D center, int size = 1, float rotation = 0.0)
+      : label(label), center(center), size(size), rotation(rotation){};
 };
 
 template <typename T, class... Args> struct Aged {
@@ -36,31 +68,32 @@ template <typename T, class... Args> struct Aged {
 
 int loop = 0;
 // We'll put game state here
-int curX = 10;
-int curY = 10;
+Point2D cursor{10, 10};
 int timeSpeed = 1;
 
-template <class T> class TimeoutList {
+template <class T> class AgedVector {
   std::vector<Aged<T>> agedItems;
   int age;
   std::function<bool(const Aged<T> &, int)> filterFunction = nullptr;
 
 public:
-  TimeoutList<T>(
+  AgedVector<T>(
       int age = 0,
       std::function<bool(const Aged<T> &, int)> filterFunction = nullptr)
       : age(age), filterFunction(filterFunction){};
 
   void add(T item) { agedItems.push_back(Aged<T>(item, age)); };
 
-  void tick(int increment=1) {
+  void tick(int increment = 1) {
     age += increment;
-    auto i = std::begin(agedItems);
-    while (i != std::end(agedItems)) {
-      if (!filterFunction(*i, age)) {
-        i = agedItems.erase(i);
-      } else {
-        ++i;
+    if (filterFunction != nullptr) {
+      auto i = std::begin(agedItems);
+      while (i != std::end(agedItems)) {
+        if (!filterFunction(*i, age)) {
+          i = agedItems.erase(i);
+        } else {
+          ++i;
+        }
       }
     }
   }
@@ -77,9 +110,16 @@ bool under100Ticks(const Aged<Item> &agedItem, int time) {
   return true;
 }
 
-TimeoutList<Item> timeoutList(0, under100Ticks);
+AgedVector<Item> timeoutList(0, under100Ticks);
+AgedVector<RotatingSquare> squares;
 
-void doBomb(WINDOW *window, int y, int x) { timeoutList.add(Item('*', y, x)); }
+void addDecaying(WINDOW *window, Point2D center) {
+  timeoutList.add(Item('*', center));
+}
+
+void addSquare(WINDOW *window, Point2D center) {
+  squares.add(RotatingSquare('.', center));
+}
 
 void GameLoop(WINDOW *window) {
   // Get input
@@ -97,16 +137,16 @@ void GameLoop(WINDOW *window) {
     return;
     break;
   case KEY_LEFT:
-    curX = std::max(curX - 1, minX + 1);
+    cursor.x = std::max(cursor.x - 1, minX + 1);
     break;
   case KEY_RIGHT:
-    curX = std::min(curX + 1, maxX - 2);
+    cursor.x = std::min(cursor.x + 1, maxX - 2);
     break;
   case KEY_UP:
-    curY = std::max(curY - 1, minY + 1);
+    cursor.y = std::max(cursor.y - 1, minY + 1);
     break;
   case KEY_DOWN:
-    curY = std::min(curY + 1, maxY - 2);
+    cursor.y = std::min(cursor.y + 1, maxY - 2);
     break;
   case '+':
     timeSpeed++;
@@ -120,8 +160,11 @@ void GameLoop(WINDOW *window) {
       timeSpeed = 1;
     }
     break;
+  case 's':
+    addSquare(window, cursor);
+    break;
   case ' ':
-    doBomb(window, curY, curX);
+    addDecaying(window, cursor);
     break;
   }
 
@@ -129,15 +172,41 @@ void GameLoop(WINDOW *window) {
   werase(window);
   wborder(window, 0, 0, 0, 0, 0, 0, 0, 0);
   mvprintw(10, 10, "The iteration is %d", loop++);
-  mvprintw(11, 10, "The time multiplier is %d", timeSpeed); 
+  mvprintw(11, 10, "The time multiplier is %d", timeSpeed);
 
   timeoutList.tick(timeSpeed);
   for (const auto &item : timeoutList) {
-    mvwaddch(window, item.item.y, item.item.x,
+    mvwaddch(window, item.item.center.y, item.item.center.x,
              item.item.label |
                  COLOR_PAIR((timeoutList.getAge() - item.birthTime) / 10 + 50));
   }
-  mvwaddch(window, curY, curX, 'X' | A_BOLD);
+
+  for (const auto &agedSquare : squares) {
+    const RotatingSquare &square = agedSquare.item;
+    int leftX = square.center.x - square.size;
+    int rightX = square.center.x + square.size;
+    int topY = square.center.y - square.size;
+    int bottomY = square.center.y + square.size;
+
+    // now translate those points by the "rotation" in degrees
+    // (upperLeft, uppeRight)
+
+    // draw 4 lines - kinda wasteful, but simple
+    // we can do this in two simple loops (vertical lines and horizontal lines)
+
+    //
+    for (int x = leftX; x <= rightX; x++) {
+      mvwaddch(window, topY, x, square.label);
+      mvwaddch(window, bottomY, x, square.label);
+    }
+
+    for (int y = topY; y <= bottomY; y++) {
+      mvwaddch(window, y, leftX, square.label);
+      mvwaddch(window, y, rightX, square.label);
+    }
+  }
+
+  mvwaddch(window, cursor.y, cursor.x, 'X' | A_BOLD);
   wrefresh(window); /* Print it on to the real screen */
 }
 
