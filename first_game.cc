@@ -23,18 +23,61 @@ struct Item {
   char label;
   int y;
   int x;
-  int age;
 
-  Item(char label, int y, int x) : label(label), y(y), x(x), age(0){};
+  Item(char label, int y, int x) : label(label), y(y), x(x){};
+};
+
+template <typename T, class... Args> struct Aged {
+  int birthTime;
+  T item;
+  Aged(T item, int birthTime = 0)
+      : birthTime(birthTime), item(std::move(item)){};
 };
 
 int loop = 0;
 // We'll put game state here
 int curX = 10;
 int curY = 10;
-std::vector<Item> items;
+template <class T> class TimeoutList {
+  std::vector<Aged<T>> agedItems;
+  int age;
+  std::function<bool(const Aged<T> &, int)> filterFunction = nullptr;
 
-void doBomb(WINDOW *window, int y, int x) { items.emplace_back('*', y, x); }
+public:
+  TimeoutList<T>(
+      int age = 0,
+      std::function<bool(const Aged<T> &, int)> filterFunction = nullptr)
+      : age(age), filterFunction(filterFunction){};
+
+  void add(T item) { agedItems.push_back(Aged<T>(item, age)); };
+
+  void tick(int increment=1) {
+    age += increment;
+    auto i = std::begin(agedItems);
+    while (i != std::end(agedItems)) {
+      if (!filterFunction(*i, age)) {
+        i = agedItems.erase(i);
+      } else {
+        ++i;
+      }
+    }
+  }
+
+  auto begin() const { return agedItems.begin(); }
+  auto end() const { return agedItems.end(); }
+  int getAge() { return age; }
+};
+
+bool under100Ticks(const Aged<Item> &agedItem, int time) {
+  if ((time - agedItem.birthTime) > 100) {
+    return false;
+  }
+  return true;
+}
+
+TimeoutList<Item> timeoutList(0, under100Ticks);
+
+void doBomb(WINDOW *window, int y, int x) { timeoutList.add(Item('*', y, x)); }
 
 void GameLoop(WINDOW *window) {
   // Get input
@@ -73,19 +116,11 @@ void GameLoop(WINDOW *window) {
   wborder(window, 0, 0, 0, 0, 0, 0, 0, 0);
   mvprintw(10, 10, "The iteration is %d", loop++);
 
-  // Kind of a hack - iterate through the vector, possibly removing 
-  // items if they are too old. In theory, we'd have a way for these
-  // items to remove themselves, or a data structure that better 
-  // supported this kind of removal (hashtable?)
-  auto i = std::begin(items);
-  while (i != std::end(items)) {
-    if (i->age > 100) {
-      i = items.erase(i);
-    } else {
-      mvwaddch(window, i->y, i->x, i->label | COLOR_PAIR(i->age / 10 + 50));
-      i->age++;
-      ++i;
-    }
+  timeoutList.tick();
+  for (const auto &item : timeoutList) {
+    mvwaddch(window, item.item.y, item.item.x,
+             item.item.label |
+                 COLOR_PAIR((timeoutList.getAge() - item.birthTime) / 10 + 50));
   }
   mvwaddch(window, curY, curX, 'X' | A_BOLD);
   wrefresh(window); /* Print it on to the real screen */
