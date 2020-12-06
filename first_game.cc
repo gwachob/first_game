@@ -38,6 +38,8 @@ int loop = 0;
 // We'll put game state here
 int curX = 10;
 int curY = 10;
+int timeSpeed = 1;
+
 template <class T> class TimeoutList {
   std::vector<Aged<T>> agedItems;
   int age;
@@ -106,6 +108,18 @@ void GameLoop(WINDOW *window) {
   case KEY_DOWN:
     curY = std::min(curY + 1, maxY - 2);
     break;
+  case '+':
+    timeSpeed++;
+    if (timeSpeed > 100) {
+      timeSpeed = 100;
+    }
+    break;
+  case '-':
+    timeSpeed--;
+    if (timeSpeed < 1) {
+      timeSpeed = 1;
+    }
+    break;
   case ' ':
     doBomb(window, curY, curX);
     break;
@@ -115,8 +129,9 @@ void GameLoop(WINDOW *window) {
   werase(window);
   wborder(window, 0, 0, 0, 0, 0, 0, 0, 0);
   mvprintw(10, 10, "The iteration is %d", loop++);
+  mvprintw(11, 10, "The time multiplier is %d", timeSpeed); 
 
-  timeoutList.tick();
+  timeoutList.tick(timeSpeed);
   for (const auto &item : timeoutList) {
     mvwaddch(window, item.item.y, item.item.x,
              item.item.label |
