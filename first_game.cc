@@ -32,31 +32,64 @@ struct Item {
   Item(char label, Point2D center) : label(label), center(center){};
 };
 
-Point2D rotatePoint(Point2D start, Point2D center, float degrees) {
-  float s = sin(degrees * PI / 180);
-  float c = cos(degrees * PI / 180);
+Point2D rotatePoint(Point2D start, Point2D center, int degrees) {
 
-  Point2D result;
-  result.x = start.x - center.x;
-  result.y = start.y - center.y;
+  float s = sin(degrees * PI / 180.0);
+  float c = cos(degrees * PI / 180.0);
 
-  result.x = (int)(result.x * c - result.y * s);
-  result.y = (int)(result.x * s + result.y * c);
+  float resultX = start.x - center.x;
+  float resultY = start.y - center.y;
 
-  result.x += center.x;
-  result.y += center.y;
+  // Rotation matrix is calculated here
+  float dx = resultX * c - resultY * s;
+  float dy = resultX * s + resultY * c;
 
-  return result;
+  return Point2D{int(center.x + dx), int(center.y + dy)};
 }
+
+void drawLine(Point2D start, Point2D end, WINDOW *window, char symbol) {
+  // Using Bresenham's line algorithm from
+  // https://en.wikipedia.org/wiki/Bresenham%27s_line_algorithm
+  Point2D current = start;
+  int dx = abs(end.x - start.x);
+  int sx = start.x < end.x ? 1 : -1;
+
+  int dy = -abs(end.y - start.y);
+  int sy = start.y < end.y ? 1 : -1;
+
+  int err = dx + dy;
+
+  while (true) {
+    mvwaddch(window, current.y, current.x, symbol);
+
+    if ((current.x == end.x) && (current.y == end.y))
+      break;
+
+    int e2 = 2 * err;
+
+    if (e2 >= dy) {
+      err += dy;
+      current.x += sx;
+    }
+
+    if (e2 < dx) {
+      err += dx;
+      current.y += sy;
+    }
+  }
+}
+
 struct RotatingSquare {
   char label;
 
   Point2D center;
   int size;
-  float rotation;
+  float rotationSpeed;
 
-  RotatingSquare(char label, Point2D center, int size = 1, float rotation = 0.0)
-      : label(label), center(center), size(size), rotation(rotation){};
+  RotatingSquare(char label, Point2D center, int size = 1,
+                 float rotationSpeed = 0.0)
+      : label(label), center(center), size(size),
+        rotationSpeed(rotationSpeed){};
 };
 
 template <typename T, class... Args> struct Aged {
@@ -118,7 +151,7 @@ void addDecaying(WINDOW *window, Point2D center) {
 }
 
 void addSquare(WINDOW *window, Point2D center) {
-  squares.add(RotatingSquare('.', center));
+  squares.add(RotatingSquare('.', center, 2, 10.0));
 }
 
 void GameLoop(WINDOW *window) {
@@ -175,6 +208,7 @@ void GameLoop(WINDOW *window) {
   mvprintw(11, 10, "The time multiplier is %d", timeSpeed);
 
   timeoutList.tick(timeSpeed);
+  squares.tick(timeSpeed);
   for (const auto &item : timeoutList) {
     mvwaddch(window, item.item.center.y, item.item.center.x,
              item.item.label |
@@ -188,22 +222,34 @@ void GameLoop(WINDOW *window) {
     int topY = square.center.y - square.size;
     int bottomY = square.center.y + square.size;
 
-    // now translate those points by the "rotation" in degrees
-    // (upperLeft, uppeRight)
+    // I don't like that the calculation of the rotation angle here has to use
+    // timeSpeed again, when we already passed it in to the squares via tick()
 
-    // draw 4 lines - kinda wasteful, but simple
-    // we can do this in two simple loops (vertical lines and horizontal lines)
+    // Maybe we shouldn't bother with a AgedVector for boxes? Or augment it?
 
-    //
-    for (int x = leftX; x <= rightX; x++) {
-      mvwaddch(window, topY, x, square.label);
-      mvwaddch(window, bottomY, x, square.label);
-    }
+    // Calculate rotated/translated
+    Point2D upperLeft = rotatePoint(
+        Point2D{leftX, topY}, square.center,
+        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
+    Point2D upperRight = rotatePoint(
+        Point2D{rightX, topY}, square.center,
+        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
+    Point2D lowerLeft = rotatePoint(
+        Point2D{leftX, bottomY}, square.center,
+        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
+    Point2D lowerRight = rotatePoint(
+        Point2D{rightX, bottomY}, square.center,
+        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
 
-    for (int y = topY; y <= bottomY; y++) {
-      mvwaddch(window, y, leftX, square.label);
-      mvwaddch(window, y, rightX, square.label);
-    }
+    // Now draw 4 lines
+    drawLine(upperLeft, upperRight, window, square.label);
+    drawLine(upperLeft, lowerLeft, window, square.label);
+    drawLine(upperRight, lowerRight, window, square.label);
+    drawLine(lowerLeft, lowerRight, window, square.label);
+    mvwaddch(window, upperLeft.y, upperLeft.x, '+');
+    mvwaddch(window, upperRight.y, upperRight.x, '+');
+    mvwaddch(window, lowerLeft.y, lowerLeft.x, '+');
+    mvwaddch(window, lowerRight.y, lowerRight.x, '+');
   }
 
   mvwaddch(window, cursor.y, cursor.x, 'X' | A_BOLD);
