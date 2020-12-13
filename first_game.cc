@@ -265,7 +265,7 @@ int main() {
   cbreak();
   nodelay(stdscr, TRUE);
   keypad(stdscr, TRUE);
-  wresize(window, 50, 50);
+  wresize(window, 300, 300);
   start_color();
   for (int i = 50; i < 60; i++) {
     init_color(i, (200 - (i - 50) * 20), (1000 - (i - 50) * 100),
