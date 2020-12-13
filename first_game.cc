@@ -154,6 +154,38 @@ void addSquare(WINDOW *window, Point2D center) {
   squares.add(RotatingSquare('.', center, 2, 10.0));
 }
 
+void drawSquare(WINDOW *window, const RotatingSquare& square, int angle) {
+  int leftX = square.center.x - square.size;
+    int rightX = square.center.x + square.size;
+    int topY = square.center.y - square.size;
+    int bottomY = square.center.y + square.size;
+
+    // I don't like that the calculation of the rotation angle here has to use
+    // timeSpeed again, when we already passed it in to the squares via tick()
+
+    // Maybe we shouldn't bother with a AgedVector for boxes? Or augment it?
+
+    // Calculate rotated/translated
+    Point2D upperLeft = rotatePoint(
+        Point2D{leftX, topY}, square.center, angle);
+    Point2D upperRight = rotatePoint(
+        Point2D{rightX, topY}, square.center, angle);
+    Point2D lowerLeft = rotatePoint(
+        Point2D{leftX, bottomY}, square.center, angle);
+    Point2D lowerRight = rotatePoint(
+        Point2D{rightX, bottomY}, square.center, angle);
+
+    // Now draw 4 lines
+    drawLine(upperLeft, upperRight, window, square.label);
+    drawLine(upperLeft, lowerLeft, window, square.label);
+    drawLine(upperRight, lowerRight, window, square.label);
+    drawLine(lowerLeft, lowerRight, window, square.label);
+    mvwaddch(window, upperLeft.y, upperLeft.x, '+');
+    mvwaddch(window, upperRight.y, upperRight.x, '+');
+    mvwaddch(window, lowerLeft.y, lowerLeft.x, '+');
+    mvwaddch(window, lowerRight.y, lowerRight.x, '+');
+}
+
 void GameLoop(WINDOW *window) {
   // Get input
   int x = getch();
@@ -217,39 +249,8 @@ void GameLoop(WINDOW *window) {
 
   for (const auto &agedSquare : squares) {
     const RotatingSquare &square = agedSquare.item;
-    int leftX = square.center.x - square.size;
-    int rightX = square.center.x + square.size;
-    int topY = square.center.y - square.size;
-    int bottomY = square.center.y + square.size;
-
-    // I don't like that the calculation of the rotation angle here has to use
-    // timeSpeed again, when we already passed it in to the squares via tick()
-
-    // Maybe we shouldn't bother with a AgedVector for boxes? Or augment it?
-
-    // Calculate rotated/translated
-    Point2D upperLeft = rotatePoint(
-        Point2D{leftX, topY}, square.center,
-        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
-    Point2D upperRight = rotatePoint(
-        Point2D{rightX, topY}, square.center,
-        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
-    Point2D lowerLeft = rotatePoint(
-        Point2D{leftX, bottomY}, square.center,
-        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
-    Point2D lowerRight = rotatePoint(
-        Point2D{rightX, bottomY}, square.center,
-        (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime)));
-
-    // Now draw 4 lines
-    drawLine(upperLeft, upperRight, window, square.label);
-    drawLine(upperLeft, lowerLeft, window, square.label);
-    drawLine(upperRight, lowerRight, window, square.label);
-    drawLine(lowerLeft, lowerRight, window, square.label);
-    mvwaddch(window, upperLeft.y, upperLeft.x, '+');
-    mvwaddch(window, upperRight.y, upperRight.x, '+');
-    mvwaddch(window, lowerLeft.y, lowerLeft.x, '+');
-    mvwaddch(window, lowerRight.y, lowerRight.x, '+');
+    int angle = (square.rotationSpeed * timeSpeed * (loop - agedSquare.birthTime));
+    drawSquare(window, square, angle);
   }
 
   mvwaddch(window, cursor.y, cursor.x, 'X' | A_BOLD);
